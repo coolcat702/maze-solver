@@ -1,14 +1,9 @@
-from collections import deque
-from itertools import product
-from queue import Queue
-from os import path
 from queue import PriorityQueue
-from sqlite3 import connect
+from sys import argv, setrecursionlimit, getrecursionlimit
+from math import sqrt
 import numpy as np
 import random
-import sys
 import time
-sys.setrecursionlimit(1500)
 
 EMPTY = 1
 SEARCHED = 0
@@ -46,63 +41,35 @@ def generateMaze(size: int):
 
     return maze, connections
 
-def solveWithDijkstra(maze, connections):
+def heuristic(point1, point2, heuristicFunc):
+    if heuristicFunc in ['manhattan', 'grid', 'taxi']:
+        return abs(point1[0] - point2[0]) + abs(point1[1] - point2[1])
+    elif heuristicFunc in ['dijkstra', 'constant', 'const']:
+        return 0
+    elif heuristicFunc in ['diag', 'diagonal', 'chebyshev']:
+        return max(abs(point1[0] - point2[0]), abs(point1[1] - point2[1]))
+    elif heuristicFunc in ['oct', 'octile', 'diag-exact']:
+        return sqrt(2)*min(abs(point1[0] - point2[0]), abs(point1[1] - point2[1])) + abs(point1[0] - point2[0])+abs(point1[1] - point2[1])
+    elif heuristicFunc in ['euclidean', 'euclid']:
+        return sqrt((point1[0] - point2[0])**2 + (point1[1] - point2[1])**2)
+    else:
+        print(f'invalid heuristic: {heuristicFunc}. options: manhattan (grid), constant (dijkstra), diagonal, euclidean, octile (diag-exact)')
+        return -1
+
+def solveMaze(maze, connections, heuristicFunc):
     size = maze.shape[0]
     start = (0, 0)
     end = (size - 1, size - 1)
-    queue = Queue()
-    queue.put(start)
-    costs = {start: 0}
-    previous = {}
-    while not queue.empty():
-        currentNode = queue.get()
-        x, y = currentNode
-
-        if currentNode == end:
-            break
-
-        if maze[y, x] == SEARCHED:
-            continue
-
-        maze[y, x] = SEARCHED
-
-        for direction in DIRECTIONS.values():
-            next_node = (x + direction[0], y + direction[1])
-            if not isValidConnection([x, y], list(next_node), connections):
-                continue
-
-            new_cost = costs[currentNode] + 1
-            if next_node not in costs or new_cost < costs[next_node]:
-                costs[next_node] = new_cost
-                previous[next_node] = currentNode
-                queue.put(next_node)
-
-    node = end
-    while node != start:
-        x, y = node
-        maze[y, x] = PATH
-        node = previous[node]
-
-    maze[0, 0] = PATH
-    return maze
-
-# HEURISTIC - manhattan distance for now, probably change later
-def heuristic(point1, point2):
-    return abs(point1[0] - point2[0]) + abs(point1[1] - point2[1])
-
-def solveWithAStar(maze, connections):
-
-    size = maze.shape[0]
-    start = (0, 0)
-    end = (size - 1, size - 1)
-    queue = PriorityQueue()
-    queue.put((heuristic(start, end), 0, start))
+    if heuristic(start, start, heuristicFunc) == -1:
+        return 0, 0, 0
+    openQueue = PriorityQueue()
+    openQueue.put((heuristic(start, end, heuristicFunc), 0, start))
     costs = {start: 0}
     visited = set()
-    previous = {}
-
-    while not queue.empty():
-        _, cost, currentNode = queue.get()
+    closed = {}
+    searches = 1
+    while not openQueue.empty():
+        _, cost, currentNode = openQueue.get()
         x, y = currentNode
 
         if currentNode == end:
@@ -123,21 +90,23 @@ def solveWithAStar(maze, connections):
                 continue
 
             costs[next_node] = new_cost
-            previous[next_node] = currentNode
-            queue.put((new_cost + heuristic(next_node, end), new_cost, next_node))
+            closed[next_node] = currentNode
+            openQueue.put((new_cost + heuristic(next_node, end, heuristicFunc), new_cost, next_node))
+            searches += 1
 
     node = end
+    pathLength = 1
     while node != start:
         x, y = node
         maze[y, x] = PATH
-        node = previous[node]
-
+        node = closed[node]
+        pathLength += 1
     maze[0, 0] = PATH
-    return maze
+    return maze, searches, pathLength
 
 
 def printMaze(maze: np.array, connections: np.array):
-    val = np.full((2 * maze.shape[0] + 1, 2 * maze.shape[1] + 1), '#', order='C')
+    val = np.full((2 * maze.shape[0] + 1, 2 * maze.shape[1] + 1), '@', order='C')
 
     def updateVal(i, j, char):
         val[i * 2 + 1, j * 2 + 1] = char
@@ -155,39 +124,50 @@ def printMaze(maze: np.array, connections: np.array):
             if maze[y1, x1] == PATH and maze[y2, x2] == PATH:
                 updateConnection(y, x1, True, '|')
             else:
-                updateConnection(y, x1, True, ':' if maze[y1, x1] == SEARCHED or maze[y2, x2] == SEARCHED else ' ')
+                updateConnection(y, x1, True, ' ' if maze[y1, x1] == SEARCHED or maze[y2, x2] == SEARCHED else ' ')
         elif y1 == y2:
             x = min(x1, x2)
-            updateConnection(y1, x, False, '-' if maze[y1, x1] == PATH and maze[y2, x2] == PATH else ':' if maze[y1, x1] == SEARCHED or maze[y2, x2] == SEARCHED else ' ')
+            updateConnection(y1, x, False, '-' if maze[y1, x1] == PATH and maze[y2, x2] == PATH else ' ' if maze[y1, x1] == SEARCHED or maze[y2, x2] == SEARCHED else ' ')
     for row in val:
         print(''.join(row))
 
 def main():
-    size = int(sys.argv[1])
-    if size > 55:
-        raise ValueError("error: \'mazeSize\' too large")
-    maze, connections = generateMaze(size)
-    doPrint = sys.argv[3] if len(sys.argv) > 3 else 'all'
-    if doPrint not in ['unsolved', 'solved', 'all']:
-        raise ValueError("error: what to print unspecified")
-    if doPrint in ['unsolved', 'all']:
-        print("Original Maze:")
-        printMaze(maze, connections)
-    algorithm = sys.argv[2]
-    if algorithm == 'astar':
-        start = time.time()
-        solvedMaze = solveWithAStar(np.copy(maze), connections)
-        end = time.time()
-    elif algorithm == 'dijkstra':
-        start = time.time()
-        solvedMaze = solveWithDijkstra(np.copy(maze), connections)
-        end = time.time()
-    else:
-        raise ValueError('\'algorithm\' must be \'astar\' or \'dijkstra\'')
-    if doPrint in ['solved', 'all']:
-        print("\nSolved Maze:")
-        printMaze(solvedMaze, connections)
-    print(f'Solved in {end - start} seconds')
 
+    if len(argv) < 3:
+        print('usage: python main.py size heuristic printing (optional)')
+        return None
+    if len(argv) > 4:
+        print('usage: python main.py size heuristic printing (optional)')
+        return None
+
+    size = int(argv[1])
+    if size < 2:
+        print(f'error: mazeSize {size} too small')
+        return None
+    try:
+        maze, connections = generateMaze(size)
+    except RecursionError:
+        setrecursionlimit(getrecursionlimit() + 250)
+        main()
+        return None
+    heuristicFunc = argv[2]
+    start = time.time()
+    solvedMaze, searches, length = solveMaze(np.copy(maze), connections, heuristicFunc)
+    end = time.time()
+    if isinstance(solvedMaze, int):
+        print('usage: python main.py size heuristic printing (optional)')
+        return None
+    doPrint = argv[3] if len(argv) > 3 else 'all'
+    if doPrint not in ['unsolved', 'solved', 'all', 'none']:
+        print('error: what to print unspecified')
+    if doPrint in ['unsolved', 'all']:
+        print('Original Maze:')
+        printMaze(maze, connections)
+    if doPrint in ['solved', 'all']:
+        print('\nSolved Maze:')
+        printMaze(solvedMaze, connections)
+    print(f'\nSolved in {end - start} seconds')
+    print(f'found path {length} cells long')
+    print(f'searched {searches} out of {size**2} cells\n')
 if __name__ == '__main__':
     main()
