@@ -1,9 +1,29 @@
 from queue import PriorityQueue
-from sys import argv, setrecursionlimit, getrecursionlimit
+import matplotlib.pyplot as plt
+from sys import argv, setrecursionlimit
+import pandas as pd
 from math import sqrt
 import numpy as np
 import random
 import time
+setrecursionlimit(5000)
+
+HEURISTICS = {
+    'manhattan': lambda p1, p2: abs(p1[0] - p2[0]) + abs(p1[1] - p2[1]),
+    'grid': lambda p1, p2: abs(p1[0] - p2[0]) + abs(p1[1] - p2[1]),
+    'taxi': lambda p1, p2: abs(p1[0] - p2[0]) + abs(p1[1] - p2[1]),
+    'dijkstra': lambda p1, p2: 0,
+    'constant': lambda p1, p2: 0,
+    'const': lambda p1, p2: 0,
+    'diag': lambda p1, p2: max(abs(p1[0] - p2[0]), abs(p1[1] - p2[1])),
+    'diagonal': lambda p1, p2: max(abs(p1[0] - p2[0]), abs(p1[1] - p2[1])),
+    'chebyshev': lambda p1, p2: max(abs(p1[0] - p2[0]), abs(p1[1] - p2[1])),
+    'oct': lambda p1, p2: sqrt(2)*min(abs(p1[0] - p2[0]), abs(p1[1] - p2[1])) + abs(p1[0] - p2[0])+abs(p1[1] - p2[1]),
+    'octile': lambda p1, p2: sqrt(2)*min(abs(p1[0] - p2[0]), abs(p1[1] - p2[1])) + abs(p1[0] - p2[0])+abs(p1[1] - p2[1]),
+    'diag-exact': lambda p1, p2: sqrt(2)*min(abs(p1[0] - p2[0]), abs(p1[1] - p2[1])) + abs(p1[0] - p2[0])+abs(p1[1] - p2[1]),
+    'euclidean': lambda p1, p2: sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2),
+    'euclid': lambda p1, p2: sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
+}
 
 EMPTY = 1
 SEARCHED = 0
@@ -42,17 +62,9 @@ def generateMaze(size: int):
     return maze, connections
 
 def heuristic(point1, point2, heuristicFunc):
-    if heuristicFunc in ['manhattan', 'grid', 'taxi']:
-        return abs(point1[0] - point2[0]) + abs(point1[1] - point2[1])
-    elif heuristicFunc in ['dijkstra', 'constant', 'const']:
-        return 0
-    elif heuristicFunc in ['diag', 'diagonal', 'chebyshev']:
-        return max(abs(point1[0] - point2[0]), abs(point1[1] - point2[1]))
-    elif heuristicFunc in ['oct', 'octile', 'diag-exact']:
-        return sqrt(2)*min(abs(point1[0] - point2[0]), abs(point1[1] - point2[1])) + abs(point1[0] - point2[0])+abs(point1[1] - point2[1])
-    elif heuristicFunc in ['euclidean', 'euclid']:
-        return sqrt((point1[0] - point2[0])**2 + (point1[1] - point2[1])**2)
-    else:
+    try:
+        return HEURISTICS[heuristicFunc](point1, point2)
+    except KeyError:
         print(f'invalid heuristic: {heuristicFunc}. options: manhattan (grid), constant (dijkstra), diagonal, euclidean, octile (diag-exact)')
         return -1
 
@@ -106,6 +118,7 @@ def solveMaze(maze, connections, heuristicFunc):
 
 
 def printMaze(maze: np.array, connections: np.array):
+
     val = np.full((2 * maze.shape[0] + 1, 2 * maze.shape[1] + 1), '@', order='C')
 
     def updateVal(i, j, char):
@@ -131,35 +144,39 @@ def printMaze(maze: np.array, connections: np.array):
     for row in val:
         print(''.join(row))
 
-def main():
+def print_usage_error():
+    print('usage: python main.py size heuristic printing (optional) or python main.py excel')
 
-    if len(argv) < 3:
-        print('usage: python main.py size heuristic printing (optional)')
-        return None
-    if len(argv) > 4:
-        print('usage: python main.py size heuristic printing (optional)')
-        return None
-
+def plotVisual(argv):
+    output = []
+    if len(argv) != 7:
+        for size in range(int(argv[2]), int(argv[3])+1):
+            for heuristic in HEURISTICS.keys():
+                total_searches = sum(solveMaze(*generateMaze(size), heuristic)[1] for _ in range(int(argv[4])))
+                average_searches = total_searches / int(argv[4])
+                output.append((size, heuristic, average_searches))
+                print(f'{size} {heuristic}')
+        df = pd.DataFrame(output, columns=['size', 'column', 'data'])
+        df_pivot = df.pivot(index='size', columns='column', values='data')
+        df_pivot.to_excel(f'output_AO{argv[4]}_{argv[2]}-{argv[3]}.xlsx', index=True)
+    else:
+        rowToPlot = argv[6]
+        for size in range(int(argv[2]), int(argv[3])+1):
+            total_searches = sum(solveMaze(*generateMaze(size), rowToPlot)[1] for _ in range(int(argv[4])))
+            average_searches = total_searches / int(argv[4])
+            output.append((size, average_searches))
+        df = pd.DataFrame(output, columns=['size', 'average searches'])
+        df.plot(x='size', y='average searches', kind='line')
+        plt.show()
+        
+def plotCMDLine(argv):
     size = int(argv[1])
-    if size < 2:
-        print(f'error: mazeSize {size} too small')
-        return None
-    try:
-        maze, connections = generateMaze(size)
-    except RecursionError:
-        setrecursionlimit(getrecursionlimit() + 250)
-        main()
-        return None
+    maze, connections = generateMaze(size)
     heuristicFunc = argv[2]
     start = time.time()
     solvedMaze, searches, length = solveMaze(np.copy(maze), connections, heuristicFunc)
     end = time.time()
-    if isinstance(solvedMaze, int):
-        print('usage: python main.py size heuristic printing (optional)')
-        return None
     doPrint = argv[3] if len(argv) > 3 else 'all'
-    if doPrint not in ['unsolved', 'solved', 'all', 'none']:
-        print('error: what to print unspecified')
     if doPrint in ['unsolved', 'all']:
         print('Original Maze:')
         printMaze(maze, connections)
@@ -169,5 +186,25 @@ def main():
     print(f'\nSolved in {end - start} seconds')
     print(f'found path {length} cells long')
     print(f'searched {searches} out of {size**2} cells\n')
+
+def main():
+    if len(argv) == 5 or len(argv) == 7 and argv[1] == 'excel':
+        if int(argv[2]) < 2:
+            print(f'error: mazeSize {argv[2]} too small')
+            return
+        plotVisual(argv)
+    elif len(argv) < 2 or len(argv) > 4:
+        print_usage_error()
+        return
+    else:
+        size = int(argv[1])
+        if size < 2:
+            print(f'error: mazeSize {size} too small')
+            return
+        plotCMDLine(argv)
+
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except RecursionError:
+        print('error: mazeSize too large')
