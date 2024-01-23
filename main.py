@@ -20,8 +20,8 @@ heuristics = {
 	'euclidean': lambda p1, p2: sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2),
 }
 
-EMPTY = 1
 SEARCHED = 0
+EMPTY = 1
 PATH = 2
 directions = [(0, 1), (0, -1), (1, 0), (-1, 0)]
 
@@ -121,8 +121,8 @@ if __name__ == '__main__':
 			for _ in range(sample):
 				maze, connections = generate_maze(size)
 				total_searches += solve_maze(maze, connections, heuristic)[1]
-			average_searches = total_searches / sample
-			output.append((size, heuristic, average_searches))
+				average_searches = total_searches / sample
+				output.append((size, heuristic, average_searches))
 	df = pd.DataFrame(output, columns=['size', 'heuristic', 'average searches'])
 	df.pivot(index='size', columns='heuristic', values='average searches').plot(kind='line')
 	plt.show()
