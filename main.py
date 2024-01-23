@@ -23,12 +23,12 @@ heuristics = {
 EMPTY = 1
 SEARCHED = 0
 PATH = 2
-DIRECTIONS = {'R': (1, 0), 'D': (0, 1), 'L': (-1, 0), 'U': (0, -1)}
+directions = [(0, 1), (0, -1), (1, 0), (-1, 0)]
 
 def isValidConnection(pos1, pos2, connections):
 	return [pos1, pos2] in connections or [pos2, pos1] in connections
 
-def generateMaze(size: int):
+def generate_maze(size: int):
 	maze = np.full((size, size), EMPTY)
 	if size < 2:
 		return maze, [[[]]]
@@ -36,8 +36,6 @@ def generateMaze(size: int):
 
 	def generateCell(x, y):
 		visited[x, y] = True
-
-		directions = [(0, 1), (0, -1), (1, 0), (-1, 0)]
 		random.shuffle(directions)
 
 		for xDistance, yDistance in directions:
@@ -59,7 +57,7 @@ def generateMaze(size: int):
 	return maze, connections
 
 
-def solveMaze(maze, connections, heuristic):
+def solve_maze(maze, connections, heuristic):
 	size = maze.shape[0]
 	if size < 2:
 		return maze, 0, 1
@@ -67,25 +65,25 @@ def solveMaze(maze, connections, heuristic):
 	end = (size - 1, size - 1)
 	if heuristics[heuristic](start, start) == -1:
 		return 0, 0, 0
-	openQueue = PriorityQueue()
-	openQueue.put((heuristics[heuristic](start, end), 0, start))
+	open_queue = PriorityQueue()
+	open_queue.put((heuristics[heuristic](start, end), 0, start))
 	costs = {start: 0}
 	visited = set()
 	closed = {}
 	searches = 1
-	while not openQueue.empty():
-		_, cost, currentNode = openQueue.get()
-		x, y = currentNode
+	while not open_queue.empty():
+		_, cost, current_node = open_queue.get()
+		x, y = current_node
 
-		if currentNode == end:
+		if current_node == end:
 			break
 
-		if currentNode in visited:
+		if current_node in visited:
 			continue
 
-		visited.add(currentNode)
+		visited.add(current_node)
 
-		for direction in DIRECTIONS.values():
+		for direction in directions.values():
 			next_node = (x + direction[0], y + direction[1])
 			if not isValidConnection([x, y], list(next_node), connections):
 				continue
@@ -95,19 +93,19 @@ def solveMaze(maze, connections, heuristic):
 				continue
 
 			costs[next_node] = new_cost
-			closed[next_node] = currentNode
-			openQueue.put((new_cost + heuristics[heuristic](next_node, end), new_cost, next_node))
+			closed[next_node] = current_node
+			open_queue.put((new_cost + heuristics[heuristic](next_node, end), new_cost, next_node))
 			searches += 1
 
 	node = end
-	pathLength = 1
+	path_length = 1
 	while node != start:
 		x, y = node
 		maze[y, x] = PATH
 		node = closed[node]
-		pathLength += 1
+		path_length += 1
 	maze[0, 0] = PATH
-	return maze, searches, pathLength
+	return maze, searches, path_length
 
 if __name__ == '__main__':
 	if len(argv) != 4:
@@ -119,8 +117,10 @@ if __name__ == '__main__':
 	sample = int(argv[3])
 	for heuristic in ['manhattan', 'constant', 'diagonal', 'octile', 'linear']:
 		for size in range(start, end+1):
-			maze, connections = generateMaze(size)
-			total_searches = sum(solveMaze(maze, connections, heuristic)[1] for _ in range(sample))
+			total_searches = 0
+			for _ in range(sample):
+				maze, connections = generate_maze(size)
+				total_searches += solve_maze(maze, connections, heuristic)[1]
 			average_searches = total_searches / sample
 			output.append((size, heuristic, average_searches))
 	df = pd.DataFrame(output, columns=['size', 'heuristic', 'average searches'])
